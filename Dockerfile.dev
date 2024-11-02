@@ -1,0 +1,13 @@
+FROM python:3.12-slim
+
+WORKDIR /tmp/app
+
+COPY ./ /tmp/app
+
+RUN pip config set global.disable-pip-version-check true
+RUN pip install -r requirements-pip.txt
+RUN python -m pip install .[dev]
+#
+#WORKDIR /opt/app
+#
+#RUN rm -rf /tmp/app
