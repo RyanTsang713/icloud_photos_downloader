@@ -48,6 +48,7 @@ from pyicloud_ipd.utils import (
     get_password_from_keyring,
     size_to_suffix,
     store_password_in_keyring,
+    get_day_diff_from_today,
 )
 from pyicloud_ipd.version_size import AssetVersionSize, LivePhotoVersionSize
 from tqdm import tqdm
@@ -567,6 +568,18 @@ CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
     is_eager=True,
     callback=report_version,
 )
+@click.option(
+    "--delay-days",
+    help="Only download files older than this many days",
+    type=click.IntRange(),
+    default=None,
+)
+@click.option(
+    "--skip-favorites",
+    help="Skip photos in favorites album",
+    is_flag=True,
+    default=False,
+)
 def main(
     directory: Optional[str],
     username: str,
@@ -612,6 +625,8 @@ def main(
     file_match_policy: FileMatchPolicy,
     mfa_provider: MFAProvider,
     use_os_locale: bool,
+    delay_days: Optional[int],
+    skip_favorites: bool,
 ) -> NoReturn:
     """Download all iCloud photos to a local directory"""
 
@@ -756,6 +771,7 @@ def main(
                 live_photo_size,
                 dry_run,
                 file_match_policy,
+                delay_days,
             )
             if directory is not None
             else (lambda _s: lambda _c, _p: False),
@@ -795,6 +811,7 @@ def main(
             password_providers,
             mfa_provider,
             status_exchange,
+            skip_favorites,
         )
         sys.exit(result)
 
@@ -812,6 +829,7 @@ def download_builder(
     live_photo_size: LivePhotoVersionSize,
     dry_run: bool,
     file_match_policy: FileMatchPolicy,
+    delay_days: Optional[int],
 ) -> Callable[[PyiCloudService], Callable[[Counter, PhotoAsset], bool]]:
     """factory for downloader"""
 
@@ -881,6 +899,10 @@ def download_builder(
                     "Include a link to the Gist in your issue, so that we can "
                     "see what went wrong.\n"
                 )
+                return False
+
+            if delay_days and get_day_diff_from_today(created_date) <= delay_days:
+                logger.debug(f"{photo.filename} is not old enough.")
                 return False
 
             download_dir = os.path.normpath(os.path.join(directory, date_path))
@@ -1171,6 +1193,7 @@ def core(
     ],
     mfa_provider: MFAProvider,
     status_exchange: StatusExchange,
+    skip_favorites: bool,
 ) -> int:
     """Download all iCloud photos to a local directory"""
 
@@ -1240,6 +1263,12 @@ def core(
                         logger.error("Unknown library: %s", library)
                         return 1
                 photos = library_object.albums[album]
+
+                if skip_favorites:
+                    skip_photo_ids = {item.id for item in icloud.photos.albums["Favorites"]}
+                else:
+                    skip_photo_ids = {}
+
             except PyiCloudAPIResponseException as err:
                 # For later: come up with a nicer message to the user. For now take the
                 # exception text
@@ -1341,6 +1370,14 @@ def core(
                         )
                         break
                     item = next(photos_iterator)
+
+                    if item.id in skip_photo_ids:
+                        filename = clean_filename(item.filename)
+                        logger.info(
+                            f"{filename} belongs to Favorites album. skipping..."
+                        )
+                        continue
+
                     if download_photo(consecutive_files_found, item) and delete_after_download:
                         delete_local = partial(
                             delete_photo_dry_run if dry_run else delete_photo,

@@ -1,12 +1,12 @@
 import copy
 import os
+from datetime import datetime
 from typing import Dict, Optional, Sequence
-import typing
+
 import keyring
 
 from pyicloud_ipd.asset_version import AssetVersion
 from pyicloud_ipd.version_size import AssetVersionSize, VersionSize
-
 from .exceptions import PyiCloudNoStoredPasswordAvailableException
 
 KEYRING_SYSTEM = 'pyicloud://icloud-password'
@@ -135,3 +135,9 @@ def disambiguate_filenames(_versions: Dict[VersionSize, AssetVersion], _sizes:Se
 
 
     return _results
+
+
+def get_day_diff_from_today(date):
+    today = datetime.now(date.tzinfo).date()
+    delta = today - date.date()
+    return delta.days
